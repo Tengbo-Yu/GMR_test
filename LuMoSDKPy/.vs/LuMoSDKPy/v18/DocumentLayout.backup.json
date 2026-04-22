@@ -1,0 +1,37 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Mocap\\LuMoSDK-V200R001C00B009\\LuMoSDK-V200R001C00B009\\sample\\Python\\LuMoSDKPy\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A836F8F5-FDDD-479B-9AFC-908A72FE7AC8}|LuMoSDKPy.pyproj|C:\\Mocap\\LuMoSDK-V200R001C00B009\\LuMoSDK-V200R001C00B009\\sample\\Python\\LuMoSDKPy\\PythonSample.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{A836F8F5-FDDD-479B-9AFC-908A72FE7AC8}|LuMoSDKPy.pyproj|solutionrelative:PythonSample.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "PythonSample.py",
+              "DocumentMoniker": "C:\\Mocap\\LuMoSDK-V200R001C00B009\\LuMoSDK-V200R001C00B009\\sample\\Python\\LuMoSDKPy\\PythonSample.py",
+              "RelativeDocumentMoniker": "PythonSample.py",
+              "ToolTip": "C:\\Mocap\\LuMoSDK-V200R001C00B009\\LuMoSDK-V200R001C00B009\\sample\\Python\\LuMoSDKPy\\PythonSample.py",
+              "RelativeToolTip": "PythonSample.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABIAAAAjAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2026-04-22T09:48:41.408Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
