@@ -14,9 +14,9 @@ python scripts/bvh_to_robot.py \
   --robot unitree_g1 \
   --motion_fps 120 \
   --rate_limit \
-  --save_path /mnt/c/Users/TsingSV/Work/GMR/test_Skeleton0_g1.pkl \
+  --save_path /mnt/c/Users/TsingSV/GMR/test_Skeleton0_g1.pkl \
   --record_video \
-  --video_path /mnt/c/Users/TsingSV/Work/GMR/test_Skeleton0_g1.mp4
+  --video_path /mnt/c/Users/TsingSV/GMR/test_Skeleton0_g1.mp4
 
 
 # python scripts/vis_robot_motion.py \
