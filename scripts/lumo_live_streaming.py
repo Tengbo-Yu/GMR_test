@@ -137,6 +137,11 @@ class MotionForwarder:
         self.tcp_server = tcp_server
         self.sock = None
         self.client_sock = None
+        self.sent_packets = 0
+        self.failed_packets = 0
+        self.sent_bytes = 0
+        self.last_error = ""
+        self.last_send_ok = False
 
         if self.protocol == "udp":
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -155,13 +160,15 @@ class MotionForwarder:
         else:
             raise ValueError(f"Unsupported protocol: {self.protocol}")
 
-    def _serialize(self, payload: Dict[str, object]) -> bytes:
+    def _serialize(self, payload) -> bytes:
         if self.payload_format == "pickle":
             import pickle
 
             return pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
         if self.payload_format == "json":
             return (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
+        if self.payload_format == "array":
+            return np.asarray(payload, dtype=np.float32).tobytes()
         raise ValueError(f"Unsupported payload format: {self.payload_format}")
 
     def _maybe_accept_client(self) -> None:
@@ -177,31 +184,78 @@ class MotionForwarder:
 
     def send(self, payload: Dict[str, object]) -> bool:
         data = self._serialize(payload)
+        needs_length_prefix = self.payload_format in {"pickle", "array"}
 
         if self.protocol == "udp":
-            self.sock.sendto(data, (self.host, self.port))
-            return True
+            try:
+                sent = self.sock.sendto(data, (self.host, self.port))
+                if sent != len(data):
+                    self.failed_packets += 1
+                    self.last_error = f"UDP partial send: {sent}/{len(data)} bytes"
+                    self.last_send_ok = False
+                    return False
+                self.sent_packets += 1
+                self.sent_bytes += sent
+                self.last_error = ""
+                self.last_send_ok = True
+                return True
+            except OSError as exc:
+                self.failed_packets += 1
+                self.last_error = str(exc)
+                self.last_send_ok = False
+                return False
 
         if self.tcp_server:
             self._maybe_accept_client()
             if self.client_sock is None:
+                self.failed_packets += 1
+                self.last_error = "No TCP client connected yet"
+                self.last_send_ok = False
                 return False
             try:
-                if self.payload_format == "pickle":
-                    self.client_sock.sendall(struct.pack("!I", len(data)) + data)
+                if needs_length_prefix:
+                    payload_bytes = struct.pack("!I", len(data)) + data
                 else:
-                    self.client_sock.sendall(data)
+                    payload_bytes = data
+                self.client_sock.sendall(payload_bytes)
+                self.sent_packets += 1
+                self.sent_bytes += len(payload_bytes)
+                self.last_error = ""
+                self.last_send_ok = True
                 return True
-            except OSError:
+            except OSError as exc:
+                self.failed_packets += 1
+                self.last_error = str(exc)
+                self.last_send_ok = False
                 self.client_sock.close()
                 self.client_sock = None
                 return False
 
-        if self.payload_format == "pickle":
-            self.sock.sendall(struct.pack("!I", len(data)) + data)
-        else:
-            self.sock.sendall(data)
-        return True
+        try:
+            if needs_length_prefix:
+                payload_bytes = struct.pack("!I", len(data)) + data
+            else:
+                payload_bytes = data
+            self.sock.sendall(payload_bytes)
+            self.sent_packets += 1
+            self.sent_bytes += len(payload_bytes)
+            self.last_error = ""
+            self.last_send_ok = True
+            return True
+        except OSError as exc:
+            self.failed_packets += 1
+            self.last_error = str(exc)
+            self.last_send_ok = False
+            return False
+
+    def get_stats(self) -> Dict[str, object]:
+        return {
+            "sent_packets": self.sent_packets,
+            "failed_packets": self.failed_packets,
+            "sent_bytes": self.sent_bytes,
+            "last_error": self.last_error,
+            "last_send_ok": self.last_send_ok,
+        }
 
     def close(self) -> None:
         if self.client_sock is not None:
@@ -353,6 +407,16 @@ def make_motion_frame_payload(qpos: np.ndarray, fps: int, frame_index: int) -> D
     }
 
 
+def make_motion_frame_array(qpos: np.ndarray) -> np.ndarray:
+    return np.concatenate(
+        [
+            qpos[:3],
+            qpos[3:7][[1, 2, 3, 0]],
+            qpos[7:],
+        ]
+    ).astype(np.float32, copy=False)
+
+
 def main() -> int:
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -435,7 +499,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--forward_format",
-        choices=["pickle", "json"],
+        choices=["pickle", "json", "array"],
         default="pickle",
         help="Serialization format for forwarded motion frames.",
     )
@@ -444,6 +508,12 @@ def main() -> int:
         action="store_true",
         default=False,
         help="For TCP only: bind and wait for a consumer to connect instead of connecting out.",
+    )
+    parser.add_argument(
+        "--wait_log_interval",
+        type=float,
+        default=2.0,
+        help="How often to print waiting status when no LuMo frame arrives.",
     )
     args = parser.parse_args()
 
@@ -541,6 +611,9 @@ def main() -> int:
     last_valid_human_frame = None
     summary_printed = False
     recv_flag = 1 if args.non_blocking else 0
+    first_frame_received = False
+    waiting_since = time.time()
+    last_wait_log_time = 0.0
 
     fps_counter = 0
     fps_start_time = time.time()
@@ -551,6 +624,15 @@ def main() -> int:
             frame = LuMoSDKClient.ReceiveData(recv_flag)
             if frame is None:
                 dropped_frames += 1
+                current_time = time.time()
+                if current_time - last_wait_log_time >= args.wait_log_interval:
+                    wait_seconds = current_time - waiting_since
+                    print(
+                        f"Waiting for LuMo frame... "
+                        f"{wait_seconds:.1f}s elapsed | "
+                        f"Retargeted: {total_frames} | Dropped: {dropped_frames}"
+                    )
+                    last_wait_log_time = current_time
                 if viewer is not None and last_valid_qpos is not None:
                     viewer.step(
                         root_pos=last_valid_qpos[:3],
@@ -567,6 +649,13 @@ def main() -> int:
             if skeleton is None:
                 dropped_frames += 1
                 continue
+
+            if not first_frame_received:
+                first_frame_received = True
+                print(
+                    f"Received first tracked LuMo skeleton frame after "
+                    f"{time.time() - waiting_since:.2f}s"
+                )
 
             bones_by_name = build_bone_map(skeleton)
             if args.print_joint_summary and not summary_printed:
@@ -617,22 +706,37 @@ def main() -> int:
                 qpos_list.append(qpos.copy())
 
             if forwarder is not None:
-                payload = make_motion_frame_payload(
-                    qpos=qpos,
-                    fps=args.motion_fps,
-                    frame_index=total_frames - 1,
-                )
-                forwarder.send(payload)
+                if args.forward_format == "array":
+                    payload = make_motion_frame_array(qpos)
+                else:
+                    payload = make_motion_frame_payload(
+                        qpos=qpos,
+                        fps=args.motion_fps,
+                        frame_index=total_frames - 1,
+                    )
+                sent_ok = forwarder.send(payload)
+                if not sent_ok and forwarder.last_error:
+                    print(f"Forward send failed: {forwarder.last_error}")
 
             current_time = time.time()
             if current_time - fps_start_time >= fps_display_interval:
                 actual_fps = fps_counter / (current_time - fps_start_time)
-                print(
+                status = (
                     f"FPS: {actual_fps:.1f} | "
                     f"Retargeted: {total_frames} | "
                     f"Dropped: {dropped_frames} | "
                     f"BVH Frames: {len(recorder.frames)}"
                 )
+                if forwarder is not None:
+                    forward_stats = forwarder.get_stats()
+                    status += (
+                        f" | Forward OK: {forward_stats['sent_packets']} "
+                        f"| Forward Fail: {forward_stats['failed_packets']} "
+                        f"| Forward Bytes: {forward_stats['sent_bytes']}"
+                    )
+                    if forward_stats["last_error"]:
+                        status += f" | Last Forward Error: {forward_stats['last_error']}"
+                print(status)
                 fps_counter = 0
                 fps_start_time = current_time
 
@@ -641,6 +745,14 @@ def main() -> int:
     finally:
         LuMoSDKClient.Close()
         if forwarder is not None:
+            forward_stats = forwarder.get_stats()
+            print(
+                f"Forward summary: ok={forward_stats['sent_packets']} "
+                f"fail={forward_stats['failed_packets']} "
+                f"bytes={forward_stats['sent_bytes']}"
+            )
+            if forward_stats["last_error"]:
+                print(f"Last forward error: {forward_stats['last_error']}")
             forwarder.close()
 
         if args.save_bvh is not None:
