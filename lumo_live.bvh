@@ -1,0 +1,341 @@
+HIERARCHY
+ROOT Hips
+{
+	OFFSET 0.000000 0.000000 0.000000
+	CHANNELS 6 Xposition Yposition Zposition Zrotation Yrotation Xrotation
+	JOINT LeftUpLeg
+	{
+		OFFSET 9.14595 0 0
+		CHANNELS 3 Zrotation Yrotation Xrotation
+		JOINT LeftLeg
+		{
+			OFFSET 0 -43.2472 0
+			CHANNELS 3 Zrotation Yrotation Xrotation
+			JOINT LeftFoot
+			{
+				OFFSET 0 -39.3015 0
+				CHANNELS 3 Zrotation Yrotation Xrotation
+				JOINT LeftToe
+				{
+					OFFSET 0 -6.36299 14.6734
+					CHANNELS 3 Zrotation Yrotation Xrotation
+					JOINT LToeEnd
+					{
+						OFFSET 0 0 4.22007
+						CHANNELS 3 Zrotation Yrotation Xrotation
+						End Site
+						{
+							OFFSET 0.0 0.0 0.0
+						}
+					}
+				}
+			}
+		}
+	}
+	JOINT RightUpLeg
+	{
+		OFFSET -9.14595 0 0
+		CHANNELS 3 Zrotation Yrotation Xrotation
+		JOINT RightLeg
+		{
+			OFFSET 0 -43.2472 0
+			CHANNELS 3 Zrotation Yrotation Xrotation
+			JOINT RightFoot
+			{
+				OFFSET 0 -39.3015 0
+				CHANNELS 3 Zrotation Yrotation Xrotation
+				JOINT RightToe
+				{
+					OFFSET 0 -6.36299 14.6734
+					CHANNELS 3 Zrotation Yrotation Xrotation
+					JOINT RToeEnd
+					{
+						OFFSET 0 0 4.22007
+						CHANNELS 3 Zrotation Yrotation Xrotation
+						End Site
+						{
+							OFFSET 0.0 0.0 0.0
+						}
+					}
+				}
+			}
+		}
+	}
+	JOINT Spine1
+	{
+		OFFSET 0 5.32198 0
+		CHANNELS 3 Zrotation Yrotation Xrotation
+		JOINT Spine2
+		{
+			OFFSET 0 9.88454 0
+			CHANNELS 3 Zrotation Yrotation Xrotation
+			JOINT Chest
+			{
+				OFFSET 0 10.4705 0
+				CHANNELS 3 Zrotation Yrotation Xrotation
+				JOINT Neck
+				{
+					OFFSET 0 20.2251 0
+					CHANNELS 3 Zrotation Yrotation Xrotation
+					JOINT Head
+					{
+						OFFSET 0 14.0184 1.95005
+						CHANNELS 3 Zrotation Yrotation Xrotation
+						JOINT HeadEnd
+						{
+							OFFSET 0 13.1925 0
+							CHANNELS 3 Zrotation Yrotation Xrotation
+							End Site
+							{
+								OFFSET 0.0 0.0 0.0
+							}
+						}
+					}
+				}
+				JOINT LeftShoulder
+				{
+					OFFSET 4.32209 17.5503 0
+					CHANNELS 3 Zrotation Yrotation Xrotation
+					JOINT LeftArm
+					{
+						OFFSET 14.8714 0 0
+						CHANNELS 3 Zrotation Yrotation Xrotation
+						JOINT LeftForeArm
+						{
+							OFFSET 23.7007 0 0
+							CHANNELS 3 Zrotation Yrotation Xrotation
+							JOINT LeftHand
+							{
+								OFFSET 19.1112 0 0
+								CHANNELS 3 Zrotation Yrotation Xrotation
+								JOINT LeftHandPalm
+								{
+									OFFSET 0 0 0
+									CHANNELS 3 Zrotation Yrotation Xrotation
+									JOINT FZLeftThumb1
+									{
+										OFFSET -0.59711 -1.83115 3.06628
+										CHANNELS 3 Zrotation Yrotation Xrotation
+										JOINT FZLeftThumb2
+										{
+											OFFSET 1.29678 -1.36788 1.83268
+											CHANNELS 3 Zrotation Yrotation Xrotation
+											JOINT FZLeftThumb3
+											{
+												OFFSET 1.93031 -2.00253 2.64919
+												CHANNELS 3 Zrotation Yrotation Xrotation
+												End Site
+												{
+													OFFSET 0.0 0.0 0.0
+												}
+											}
+										}
+									}
+									JOINT FZLeftIndex1
+									{
+										OFFSET 6.11343 -1.1628 2.75002
+										CHANNELS 3 Zrotation Yrotation Xrotation
+										JOINT FZLeftIndex2
+										{
+											OFFSET 3.88139 -0.928421 1.01818
+											CHANNELS 3 Zrotation Yrotation Xrotation
+											JOINT FZLeftIndex3
+											{
+												OFFSET 1.49382 -0.458603 0.322774
+												CHANNELS 3 Zrotation Yrotation Xrotation
+												End Site
+												{
+													OFFSET 0.0 0.0 0.0
+												}
+											}
+										}
+									}
+									JOINT FZLeftMiddle1
+									{
+										OFFSET 6.12023 -1.14722 0.290579
+										CHANNELS 3 Zrotation Yrotation Xrotation
+										JOINT FZLeftMiddle2
+										{
+											OFFSET 4.24735 -1.08437 0.104351
+											CHANNELS 3 Zrotation Yrotation Xrotation
+											JOINT FZLeftMiddle3
+											{
+												OFFSET 2.04489 -0.741196 0.00429702
+												CHANNELS 3 Zrotation Yrotation Xrotation
+												End Site
+												{
+													OFFSET 0.0 0.0 0.0
+												}
+											}
+										}
+									}
+									JOINT FZLeftRing1
+									{
+										OFFSET 5.77174 -1.28551 -1.90363
+										CHANNELS 3 Zrotation Yrotation Xrotation
+										JOINT FZLeftRing2
+										{
+											OFFSET 3.29582 -0.998688 -0.9005
+											CHANNELS 3 Zrotation Yrotation Xrotation
+											JOINT FZLeftRing3
+											{
+												OFFSET 2.49246 -0.971542 -0.650992
+												CHANNELS 3 Zrotation Yrotation Xrotation
+												End Site
+												{
+													OFFSET 0.0 0.0 0.0
+												}
+											}
+										}
+									}
+									JOINT FZLeftPinky1
+									{
+										OFFSET 4.89582 -1.51128 -3.95336
+										CHANNELS 3 Zrotation Yrotation Xrotation
+										JOINT FZLeftPinky2
+										{
+											OFFSET 2.15219 -0.837952 -1.2451
+											CHANNELS 3 Zrotation Yrotation Xrotation
+											JOINT FZLeftPinky3
+											{
+												OFFSET 1.41002 -0.66391 -0.765082
+												CHANNELS 3 Zrotation Yrotation Xrotation
+												End Site
+												{
+													OFFSET 0.0 0.0 0.0
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				JOINT RightShoulder
+				{
+					OFFSET -4.32209 17.5509 0
+					CHANNELS 3 Zrotation Yrotation Xrotation
+					JOINT RightArm
+					{
+						OFFSET -14.8714 0 0
+						CHANNELS 3 Zrotation Yrotation Xrotation
+						JOINT RightForeArm
+						{
+							OFFSET -23.7008 0 0
+							CHANNELS 3 Zrotation Yrotation Xrotation
+							JOINT RightHand
+							{
+								OFFSET -19.1112 0.00035344 0
+								CHANNELS 3 Zrotation Yrotation Xrotation
+								JOINT RightHandPalm
+								{
+									OFFSET 0 0 0
+									CHANNELS 3 Zrotation Yrotation Xrotation
+									JOINT FZRightThumb1
+									{
+										OFFSET 0.597107 -1.83099 3.06628
+										CHANNELS 3 Zrotation Yrotation Xrotation
+										JOINT FZRightThumb2
+										{
+											OFFSET -1.29681 -1.36801 1.83268
+											CHANNELS 3 Zrotation Yrotation Xrotation
+											JOINT FZRightThumb3
+											{
+												OFFSET -1.9303 -2.002 2.64919
+												CHANNELS 3 Zrotation Yrotation Xrotation
+												End Site
+												{
+													OFFSET 0.0 0.0 0.0
+												}
+											}
+										}
+									}
+									JOINT FZRightIndex1
+									{
+										OFFSET -6.1134 -1.162 2.75002
+										CHANNELS 3 Zrotation Yrotation Xrotation
+										JOINT FZRightIndex2
+										{
+											OFFSET -3.8814 -0.929001 1.01818
+											CHANNELS 3 Zrotation Yrotation Xrotation
+											JOINT FZRightIndex3
+											{
+												OFFSET -1.4938 -0.457993 0.322774
+												CHANNELS 3 Zrotation Yrotation Xrotation
+												End Site
+												{
+													OFFSET 0.0 0.0 0.0
+												}
+											}
+										}
+									}
+									JOINT FZRightMiddle1
+									{
+										OFFSET -6.12019 -1.147 0.29058
+										CHANNELS 3 Zrotation Yrotation Xrotation
+										JOINT FZRightMiddle2
+										{
+											OFFSET -4.24741 -1.084 0.10435
+											CHANNELS 3 Zrotation Yrotation Xrotation
+											JOINT FZRightMiddle3
+											{
+												OFFSET -2.0449 -0.740997 0.00430012
+												CHANNELS 3 Zrotation Yrotation Xrotation
+												End Site
+												{
+													OFFSET 0.0 0.0 0.0
+												}
+											}
+										}
+									}
+									JOINT FZRightRing1
+									{
+										OFFSET -5.7717 -1.285 -1.90363
+										CHANNELS 3 Zrotation Yrotation Xrotation
+										JOINT FZRightRing2
+										{
+											OFFSET -3.2959 -0.998993 -0.9005
+											CHANNELS 3 Zrotation Yrotation Xrotation
+											JOINT FZRightRing3
+											{
+												OFFSET -2.4924 -0.971008 -0.65099
+												CHANNELS 3 Zrotation Yrotation Xrotation
+												End Site
+												{
+													OFFSET 0.0 0.0 0.0
+												}
+											}
+										}
+									}
+									JOINT FZRightPinky1
+									{
+										OFFSET -4.8958 -1.511 -3.95337
+										CHANNELS 3 Zrotation Yrotation Xrotation
+										JOINT FZRightPinky2
+										{
+											OFFSET -2.1522 -0.837997 -1.24509
+											CHANNELS 3 Zrotation Yrotation Xrotation
+											JOINT FZRightPinky3
+											{
+												OFFSET -1.41 -0.664002 -0.76508
+												CHANNELS 3 Zrotation Yrotation Xrotation
+												End Site
+												{
+													OFFSET 0.0 0.0 0.0
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+MOTION
+Frames: 0
+Frame Time: 0.00833333
