@@ -19,12 +19,12 @@
 
 
 python scripts/bvh_to_robot.py \
-  --bvh_file /mnt/c/Users/TsingSV/Work/GMR/Skeleton1.bvh \
+  --bvh_file /mnt/c/Users/TsingSV/GMR/test_Skeleton2.bvh \
   --format mocap \
   --robot unitree_g1 \
   --motion_fps 120 \
   --rate_limit \
-  --save_path /mnt/c/Users/TsingSV/Work/GMR/Skeleton1.pkl
+  --save_path /mnt/c/Users/TsingSV/GMR/test_Skeleton2.pkl
   
   #  \
   # --record_video \
