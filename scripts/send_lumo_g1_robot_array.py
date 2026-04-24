@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Send LuMo G1 motion as the same float32 array layout used by retarget_online.sh."""
+"""Send LuMo G1 motion as the original root + dof float32 array."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ if str(LUMO_SDK_DIR) not in sys.path:
     sys.path.insert(0, str(LUMO_SDK_DIR))
 
 import LuMoSDKClient
+from general_motion_retargeting import RobotMotionViewer
 
 
 g_running = True
@@ -58,7 +59,7 @@ class JointAngleSmoother:
 
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Stream LuMo G1 motion as root_pos + root_rot(xyzw) + dof_pos float32 array."
+        description="Stream LuMo G1 motion as root_pos + root_rot(xyzw) + dof_pos."
     )
     parser.add_argument("--ip", type=str, default="192.168.50.150", help="LuMo SDK source IP.")
     parser.add_argument("--robot-name", type=str, default="UnitreeG1", help="Tracked RobotName filter.")
@@ -106,6 +107,36 @@ def build_argparser() -> argparse.ArgumentParser:
         type=float,
         default=0.2,
         help="EMA smoothing factor for dof_pos. Smaller is smoother, 1.0 disables smoothing.",
+    )
+    parser.add_argument(
+        "--visualize",
+        action="store_true",
+        default=False,
+        help="Visualize the current G1 dof_pos on a local MuJoCo viewer.",
+    )
+    parser.add_argument(
+        "--motion-fps",
+        type=int,
+        default=120,
+        help="Viewer playback fps when visualization is enabled.",
+    )
+    parser.add_argument(
+        "--rate-limit",
+        action="store_true",
+        default=False,
+        help="Rate limit the local viewer to motion-fps.",
+    )
+    parser.add_argument(
+        "--record-video",
+        action="store_true",
+        default=False,
+        help="Record the local visualization to a video file.",
+    )
+    parser.add_argument(
+        "--video-path",
+        type=str,
+        default="videos/lumo_g1_robot_online.mp4",
+        help="Video path used when --record-video is enabled.",
     )
     return parser
 
@@ -272,7 +303,10 @@ def build_motion_array(
             root_bone.qw, root_bone.qx, root_bone.qy, root_bone.qz
         )
 
-    payload = np.concatenate([root_pos, root_rot_xyzw, dof_pos]).astype(np.float32, copy=False)
+    payload = np.concatenate([root_pos, root_rot_xyzw, dof_pos]).astype(
+        np.float32,
+        copy=False,
+    )
     return payload, missing_joint_names, unknown_motor_names
 
 
@@ -303,6 +337,15 @@ def main() -> int:
     if not 0.0 < args.joint_smoothing_alpha <= 1.0:
         raise ValueError("--joint-smoothing-alpha must be in (0, 1].")
     joint_smoother = JointAngleSmoother(args.joint_smoothing_alpha)
+    viewer = None
+    if args.visualize:
+        viewer = RobotMotionViewer(
+            robot_type="unitree_g1",
+            motion_fps=args.motion_fps,
+            camera_follow=True,
+            record_video=args.record_video,
+            video_path=args.video_path,
+        )
 
     sock = make_socket(args.protocol, args.dst_ip, args.dst_port)
     LuMoSDKClient.Init()
@@ -316,12 +359,21 @@ def main() -> int:
     last_wait_log = 0.0
     last_stats_log = time.time()
     summary_printed = False
+    if viewer is not None:
+        identity_root_pos = viewer.data.qpos[:3].copy()
+        identity_root_rot = viewer.data.qpos[3:7].copy()
+    else:
+        identity_root_pos = np.zeros(3, dtype=np.float64)
+        identity_root_rot = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    last_valid_dof_pos: Optional[np.ndarray] = None
 
     try:
         print(f"Streaming to {args.dst_ip}:{args.dst_port} over {args.protocol.upper()}")
         print(f"Loaded {len(joint_order)} joints from {robot_xml_path}")
         print("Array layout: root_pos(3) + root_rot_xyzw(4) + dof_pos(29)")
         print(f"Joint smoothing alpha: {args.joint_smoothing_alpha}")
+        if viewer is not None:
+            print("Local G1 visualization enabled.")
 
         while g_running:
             frame = LuMoSDKClient.ReceiveData(recv_flag)
@@ -332,6 +384,14 @@ def main() -> int:
                         f"Waiting for LuMo frame... sent={sent_frames} dropped={dropped_frames}"
                     )
                     last_wait_log = current_time
+                if viewer is not None and last_valid_dof_pos is not None:
+                    viewer.step(
+                        root_pos=identity_root_pos,
+                        root_rot=identity_root_rot,
+                        dof_pos=last_valid_dof_pos,
+                        rate_limit=args.rate_limit,
+                        follow_camera=True,
+                    )
                 if args.non_blocking:
                     time.sleep(max(args.poll_sleep, 0.0))
                 continue
@@ -364,6 +424,21 @@ def main() -> int:
                 print(f"Outgoing array length: {payload.shape[0]} float32 values")
                 summary_printed = True
 
+            payload64 = payload.astype(np.float64, copy=False)
+            current_root_pos = payload64[:3]
+            current_root_rot = payload64[3:7][[3, 0, 1, 2]]
+            current_dof_pos = payload64[7:]
+            last_valid_dof_pos = current_dof_pos
+
+            if viewer is not None:
+                viewer.step(
+                    root_pos=current_root_pos,
+                    root_rot=current_root_rot,
+                    dof_pos=current_dof_pos,
+                    rate_limit=args.rate_limit,
+                    follow_camera=True,
+                )
+
             try:
                 sent = send_payload(sock, args.protocol, args.dst_ip, args.dst_port, payload)
                 if sent != payload.nbytes:
@@ -391,6 +466,8 @@ def main() -> int:
     finally:
         LuMoSDKClient.Close()
         sock.close()
+        if viewer is not None:
+            viewer.close()
         print(
             f"Final send stats | ok={sent_frames} fail={failed_frames} "
             f"dropped={dropped_frames} bytes={sent_bytes}"
