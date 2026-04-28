@@ -34,6 +34,7 @@ import LuMoSDKClient
 from general_motion_retargeting import GeneralMotionRetargeting as GMR
 from general_motion_retargeting import RobotMotionViewer
 import general_motion_retargeting.utils.lafan_vendor.utils as lafan_utils
+from general_motion_retargeting.utils.lumo_network import compute_lumo_global_poses
 
 
 g_running = True
@@ -63,12 +64,13 @@ class LiveBVHRecorder:
         self.frames: List[str] = []
 
     def add_frame(self, bones_by_name: Dict[str, object]) -> None:
+        global_poses = compute_lumo_global_poses(bones_by_name)
         global_pos = []
         global_quat = []
 
         for joint_name in self.template.joint_names:
-            bone = bones_by_name.get(joint_name)
-            if bone is None:
+            global_pose = global_poses.get(joint_name)
+            if global_pose is None:
                 if global_pos:
                     global_pos.append(global_pos[-1].copy())
                     global_quat.append(np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64))
@@ -77,12 +79,9 @@ class LiveBVHRecorder:
                     global_quat.append(np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64))
                 continue
 
-            global_pos.append(np.array([bone.X, bone.Y, bone.Z], dtype=np.float64))
-            global_quat.append(
-                normalize_quat(
-                    np.array([bone.qw, bone.qx, bone.qy, bone.qz], dtype=np.float64)
-                )
-            )
+            position, orientation = global_pose
+            global_pos.append(position)
+            global_quat.append(orientation)
 
         global_pos_np = np.asarray(global_pos, dtype=np.float64)[np.newaxis, ...]
         global_quat_np = np.asarray(global_quat, dtype=np.float64)[np.newaxis, ...]
@@ -91,7 +90,7 @@ class LiveBVHRecorder:
         local_quat_np = local_quat_np[0]
 
         root_index = 0
-        root_pos = global_pos[root_index]
+        root_pos = global_pos[root_index] / 10.0  # LuMo mm to BVH cm.
         motion_values = [f"{root_pos[0]:.6f}", f"{root_pos[1]:.6f}", f"{root_pos[2]:.6f}"]
 
         for local_quat in local_quat_np:
@@ -362,13 +361,57 @@ def build_gmr_human_frame(
     position_scale: float,
 ) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
     result: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+    parent_by_bone = {
+        "Root": None,
+        "Hips": "Root",
+        "LeftUpLeg": "Hips",
+        "LeftLeg": "LeftUpLeg",
+        "LeftFoot": "LeftLeg",
+        "LeftToe": "LeftFoot",
+        "LToeEnd": "LeftToe",
+        "RightUpLeg": "Hips",
+        "RightLeg": "RightUpLeg",
+        "RightFoot": "RightLeg",
+        "RightToe": "RightFoot",
+        "RToeEnd": "RightToe",
+        "Spine1": "Hips",
+        "Spine2": "Spine1",
+        "Chest": "Spine2",
+        "Neck": "Chest",
+        "Head": "Neck",
+        "HeadEnd": "Head",
+        "LeftShoulder": "Chest",
+        "LeftArm": "LeftShoulder",
+        "LeftForeArm": "LeftArm",
+        "LeftHand": "LeftForeArm",
+        "RightShoulder": "Chest",
+        "RightArm": "RightShoulder",
+        "RightForeArm": "RightArm",
+        "RightHand": "RightForeArm",
+    }
+    global_pose_cache: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
 
-    for bone_name, bone in bones_by_name.items():
+    def compute_global_pose(bone_name: str) -> Tuple[np.ndarray, np.ndarray]:
+        if bone_name in global_pose_cache:
+            return global_pose_cache[bone_name]
+
+        bone = bones_by_name[bone_name]
         pos = np.array([bone.X, bone.Y, bone.Z], dtype=np.float64)
         quat_wxyz = normalize_quat(
             np.array([bone.qw, bone.qx, bone.qy, bone.qz], dtype=np.float64)
         )
+        parent_name = parent_by_bone.get(bone_name)
+        if parent_name is not None and parent_name in bones_by_name:
+            parent_pos, parent_quat = compute_global_pose(parent_name)
+            pos = parent_pos + lafan_utils.quat_mul_vec(parent_quat[np.newaxis, :], pos[np.newaxis, :])[0]
+            quat_wxyz = normalize_quat(
+                lafan_utils.quat_mul(parent_quat[np.newaxis, :], quat_wxyz[np.newaxis, :])[0]
+            )
+        global_pose_cache[bone_name] = (pos, quat_wxyz)
+        return global_pose_cache[bone_name]
 
+    for bone_name in bones_by_name:
+        pos, quat_wxyz = compute_global_pose(bone_name)
         transformed_pos = pos @ rotation_matrix.T * position_scale
         transformed_quat = normalize_quat(
             lafan_utils.quat_mul(rotation_quat_wxyz[np.newaxis, :], quat_wxyz[np.newaxis, :])[0]

@@ -44,8 +44,38 @@ LUMO_REQUIRED_SOURCE_BONES: List[str] = [
     "RightHand",
 ]
 
+LUMO_PARENT_BY_BONE = {
+    "Root": None,
+    "Hips": "Root",
+    "LeftUpLeg": "Hips",
+    "LeftLeg": "LeftUpLeg",
+    "LeftFoot": "LeftLeg",
+    "LeftToe": "LeftFoot",
+    "LToeEnd": "LeftToe",
+    "RightUpLeg": "Hips",
+    "RightLeg": "RightUpLeg",
+    "RightFoot": "RightLeg",
+    "RightToe": "RightFoot",
+    "RToeEnd": "RightToe",
+    "Spine1": "Hips",
+    "Spine2": "Spine1",
+    "Chest": "Spine2",
+    "Neck": "Chest",
+    "Head": "Neck",
+    "HeadEnd": "Head",
+    "LeftShoulder": "Chest",
+    "LeftArm": "LeftShoulder",
+    "LeftForeArm": "LeftArm",
+    "LeftHand": "LeftForeArm",
+    "RightShoulder": "Chest",
+    "RightArm": "RightShoulder",
+    "RightForeArm": "RightArm",
+    "RightHand": "RightForeArm",
+}
+
 POSITION_SCALE_METERS = 0.001
 COORDINATE_ROTATION_MATRIX = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=np.float64)
+# COORDINATE_ROTATION_MATRIX = np.array([[1, 0, 0], [0, 0, 1], [0, 1, 0]], dtype=np.float64)
 COORDINATE_ROTATION_QUAT_WXYZ = np.array(
     [
         R.from_matrix(COORDINATE_ROTATION_MATRIX).as_quat()[3],
@@ -80,16 +110,58 @@ def build_bone_map(skeleton) -> Dict[str, object]:
     return {bone.Name: bone for bone in skeleton.skeletonBones}
 
 
+def compute_lumo_global_poses(
+    bones_by_name: Dict[str, object],
+) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
+    cache: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+
+    def compute(bone_name: str) -> Tuple[np.ndarray, np.ndarray]:
+        if bone_name in cache:
+            return cache[bone_name]
+
+        bone = bones_by_name[bone_name]
+        local_pos = np.array([bone.X, bone.Y, bone.Z], dtype=np.float64)
+        local_quat = normalize_quat(np.array([bone.qw, bone.qx, bone.qy, bone.qz], dtype=np.float64))
+        parent_name = LUMO_PARENT_BY_BONE.get(bone_name)
+
+        if parent_name is not None and parent_name in bones_by_name:
+            parent_pos, parent_quat = compute(parent_name)
+            global_pos = parent_pos + lafan_utils.quat_mul_vec(
+                parent_quat[np.newaxis, :],
+                local_pos[np.newaxis, :],
+            )[0]
+            global_quat = normalize_quat(
+                lafan_utils.quat_mul(parent_quat[np.newaxis, :], local_quat[np.newaxis, :])[0]
+            )
+        else:
+            global_pos = local_pos
+            global_quat = local_quat
+
+        cache[bone_name] = (global_pos, global_quat)
+        return cache[bone_name]
+
+    return {bone_name: compute(bone_name) for bone_name in bones_by_name}
+
+
 def build_gmr_human_frame_from_lumo(
     bones_by_name: Dict[str, object],
     position_scale: float = POSITION_SCALE_METERS,
+    lumo_positions_are_local: bool = True,
 ) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
     result: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+    source_poses = (
+        compute_lumo_global_poses(bones_by_name)
+        if lumo_positions_are_local
+        else {
+            bone_name: (
+                np.array([bone.X, bone.Y, bone.Z], dtype=np.float64),
+                normalize_quat(np.array([bone.qw, bone.qx, bone.qy, bone.qz], dtype=np.float64)),
+            )
+            for bone_name, bone in bones_by_name.items()
+        }
+    )
 
-    for bone_name, bone in bones_by_name.items():
-        pos = np.array([bone.X, bone.Y, bone.Z], dtype=np.float64)
-        quat_wxyz = normalize_quat(np.array([bone.qw, bone.qx, bone.qy, bone.qz], dtype=np.float64))
-
+    for bone_name, (pos, quat_wxyz) in source_poses.items():
         transformed_pos = pos @ COORDINATE_ROTATION_MATRIX.T * position_scale
         transformed_quat = normalize_quat(
             lafan_utils.quat_mul(

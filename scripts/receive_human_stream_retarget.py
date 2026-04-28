@@ -150,6 +150,7 @@ def main() -> int:
     if not args.disable_forward_udp:
         forward_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         print(f"Forwarding retargeted data over UDP to {args.forward_udp_host}:{args.forward_udp_port}")
+        print("Forward UDP layout: root_pos(3) + root_rot_wxyz(4) + dof_pos(29) = 36 float32")
     else:
         print("UDP forwarding disabled.")
 
@@ -258,8 +259,8 @@ def main() -> int:
 
                 if forward_sock is not None:
                     try:
-                        dof_pos = qpos[7:].astype(np.float32)
-                        forward_data = dof_pos.tobytes()
+                        forward_payload = qpos.astype(np.float32, copy=False)
+                        forward_data = forward_payload.tobytes()
                         sent_bytes = forward_sock.sendto(
                             forward_data,
                             (args.forward_udp_host, args.forward_udp_port),
