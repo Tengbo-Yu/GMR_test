@@ -1,3 +1,4 @@
+# 本地接收数据＋gmr
 python scripts/lumo_live_streaming.py \
   --ip 192.168.50.150 \
   --robot unitree_g1 \

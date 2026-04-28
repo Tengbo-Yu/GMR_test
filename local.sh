@@ -1,3 +1,4 @@
+# 本地接收数据
 python scripts/send_lumo_human_stream.py \
   --lumo_ip 192.168.50.150 \
   --dst_ip 192.168.50.34 \
