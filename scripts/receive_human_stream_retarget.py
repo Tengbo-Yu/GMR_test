@@ -59,6 +59,24 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--forward_udp_host", type=str, default="127.0.0.1")
     parser.add_argument("--forward_udp_port", type=int, default=9000)
     parser.add_argument("--disable_forward_udp", action="store_true", default=False)
+    parser.add_argument(
+        "--no_offset_to_ground",
+        action="store_true",
+        default=False,
+        help="Disable moving live human targets so the lowest foot is above the ground.",
+    )
+    parser.add_argument(
+        "--robot_ground_clearance",
+        type=float,
+        default=0.04,
+        help="Minimum robot geometry height above ground after retargeting. Use a negative value to disable.",
+    )
+    parser.add_argument(
+        "--print_waist_debug",
+        action="store_true",
+        default=False,
+        help="Print waist joint qpos values at stats_interval to verify whether the waist is moving.",
+    )
     return parser
 
 
@@ -76,6 +94,42 @@ def setup_socket(protocol: str, listen_host: str, listen_port: int):
     conn, addr = server_sock.accept()
     print(f"TCP sender connected from {addr[0]}:{addr[1]}")
     return server_sock, conn
+
+
+def lift_robot_qpos_to_ground(retargeter, qpos: np.ndarray, clearance: float) -> np.ndarray:
+    if clearance < 0:
+        return qpos
+
+    qpos = qpos.copy()
+    data = retargeter.configuration.data
+    data.qpos[:] = qpos
+
+    import mujoco as mj
+
+    mj.mj_forward(retargeter.model, data)
+    if data.geom_xpos.shape[0] == 0:
+        return qpos
+
+    geom_vertical_radius = np.max(retargeter.model.geom_size, axis=1)
+    lowest_z = float(np.min(data.geom_xpos[:, 2] - geom_vertical_radius))
+    for body_name in ("left_ankle_roll_link", "right_ankle_roll_link"):
+        body_id = retargeter.model.body(body_name).id
+        lowest_z = min(lowest_z, float(data.xpos[body_id, 2] - 0.04))
+    if lowest_z < clearance:
+        qpos[2] += clearance - lowest_z
+        data.qpos[:] = qpos
+        mj.mj_forward(retargeter.model, data)
+    return qpos
+
+
+def get_named_dof_values(retargeter, qpos: np.ndarray, name_prefix: str) -> dict:
+    values = {}
+    for joint_name, dof_index in retargeter.robot_dof_names.items():
+        if joint_name.startswith(name_prefix):
+            qpos_index = dof_index + 6 if dof_index >= 6 else dof_index
+            if qpos_index < qpos.shape[0]:
+                values[joint_name] = float(qpos[qpos_index])
+    return values
 
 
 def main() -> int:
@@ -111,8 +165,8 @@ def main() -> int:
             tgt_robot=args.robot,
             actual_human_height=args.human_height,
             solver="daqp",
-            damping=1.0,
-            use_velocity_limit=True,
+            damping=0.5,
+            use_velocity_limit=False,
         )
 
         if not args.no_viewer:
@@ -172,7 +226,15 @@ def main() -> int:
 
             if retargeter is not None:
                 try:
-                    qpos = retargeter.retarget(human_frame, offset_to_ground=False)
+                    qpos = retargeter.retarget(
+                        human_frame,
+                        offset_to_ground=not args.no_offset_to_ground,
+                    )
+                    qpos = lift_robot_qpos_to_ground(
+                        retargeter,
+                        qpos,
+                        clearance=args.robot_ground_clearance,
+                    )
                 except Exception as exc:
                     failed_frames += 1
                     print(f"Retarget failed: {exc}")
@@ -217,6 +279,9 @@ def main() -> int:
                     f"Receive stats | ok={received_frames} fail={failed_frames} "
                     f"bytes={received_bytes} fwd_ok={forwarded_frames} fwd_fail={forward_failed}"
                 )
+                if args.print_waist_debug and last_valid_qpos is not None and retargeter is not None:
+                    waist_values = get_named_dof_values(retargeter, last_valid_qpos, "waist_")
+                    print(f"Waist qpos: {waist_values}")
                 last_stats_log = current_time
 
     except KeyboardInterrupt:

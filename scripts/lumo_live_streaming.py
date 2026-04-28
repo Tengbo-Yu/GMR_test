@@ -432,6 +432,9 @@ def lift_robot_qpos_to_ground(retargeter, qpos: np.ndarray, clearance: float) ->
 
     geom_vertical_radius = np.max(retargeter.model.geom_size, axis=1)
     lowest_z = float(np.min(data.geom_xpos[:, 2] - geom_vertical_radius))
+    for body_name in ("left_ankle_roll_link", "right_ankle_roll_link"):
+        body_id = retargeter.model.body(body_name).id
+        lowest_z = min(lowest_z, float(data.xpos[body_id, 2] - 0.04))
     if lowest_z < clearance:
         qpos[2] += clearance - lowest_z
         data.qpos[:] = qpos

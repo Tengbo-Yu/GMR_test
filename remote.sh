@@ -5,7 +5,8 @@ python scripts/receive_human_stream_retarget.py \
   --robot unitree_g1 \
   --motion_fps 120 \
   --rate_limit \
-  --forward_udp_port 9000
+  --forward_udp_port 9000 \
+  --print_waist_debug
 
 
 # python scripts/receive_human_stream_retarget.py \
