@@ -56,6 +56,9 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--dry_run", action="store_true", default=False)
     parser.add_argument("--no_viewer", action="store_true", default=False)
     parser.add_argument("--stats_interval", type=float, default=2.0)
+    parser.add_argument("--forward_udp_host", type=str, default="127.0.0.1")
+    parser.add_argument("--forward_udp_port", type=int, default=9000)
+    parser.add_argument("--disable_forward_udp", action="store_true", default=False)
     return parser
 
 
@@ -88,6 +91,13 @@ def main() -> int:
     server_sock, conn = setup_socket(args.protocol, args.listen_host, args.listen_port)
     print(f"Listening on {args.listen_host}:{args.listen_port} over {args.protocol.upper()}")
     print(f"Expected frame payload size: {FRAME_BYTE_SIZE} bytes")
+
+    forward_sock = None
+    if not args.disable_forward_udp:
+        forward_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        print(f"Forwarding retargeted data over UDP to {args.forward_udp_host}:{args.forward_udp_port}")
+    else:
+        print("UDP forwarding disabled.")
 
     retargeter = None
     viewer = None
@@ -122,6 +132,8 @@ def main() -> int:
     received_frames = 0
     failed_frames = 0
     received_bytes = 0
+    forwarded_frames = 0
+    forward_failed = 0
     qpos_list = []
     last_valid_qpos = None
     last_valid_human_frame = None
@@ -182,11 +194,28 @@ def main() -> int:
                 if args.save_path is not None:
                     qpos_list.append(qpos.copy())
 
+                if forward_sock is not None:
+                    try:
+                        dof_pos = qpos[7:].astype(np.float32)
+                        forward_data = dof_pos.tobytes()
+                        sent_bytes = forward_sock.sendto(
+                            forward_data,
+                            (args.forward_udp_host, args.forward_udp_port),
+                        )
+                        if sent_bytes != len(forward_data):
+                            forward_failed += 1
+                            print(f"Forward partial send: {sent_bytes}/{len(forward_data)}")
+                        else:
+                            forwarded_frames += 1
+                    except OSError as exc:
+                        forward_failed += 1
+                        print(f"Forward failed: {exc}")
+
             current_time = time.time()
             if current_time - last_stats_log >= args.stats_interval:
                 print(
                     f"Receive stats | ok={received_frames} fail={failed_frames} "
-                    f"bytes={received_bytes}"
+                    f"bytes={received_bytes} fwd_ok={forwarded_frames} fwd_fail={forward_failed}"
                 )
                 last_stats_log = current_time
 
@@ -199,6 +228,8 @@ def main() -> int:
         if conn is not None:
             conn.close()
         server_sock.close()
+        if forward_sock is not None:
+            forward_sock.close()
 
         if args.save_path is not None and qpos_list:
             root_pos = np.array([qpos[:3] for qpos in qpos_list])
@@ -216,7 +247,10 @@ def main() -> int:
                 pickle.dump(motion_data, f)
             print(f"Saved retargeted robot motion to {args.save_path}")
 
-        print(f"Final receive stats | ok={received_frames} fail={failed_frames} bytes={received_bytes}")
+        print(
+            f"Final receive stats | ok={received_frames} fail={failed_frames} bytes={received_bytes} "
+            f"fwd_ok={forwarded_frames} fwd_fail={forward_failed}"
+        )
 
     return 0
 
