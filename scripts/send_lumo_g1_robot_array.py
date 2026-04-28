@@ -138,6 +138,24 @@ def build_argparser() -> argparse.ArgumentParser:
         default="videos/lumo_g1_robot_online.mp4",
         help="Video path used when --record-video is enabled.",
     )
+    parser.add_argument(
+        "--viewer-use-stream-root",
+        action="store_true",
+        default=False,
+        help="Use streamed root pose in the local viewer. By default the viewer keeps the XML root pose stable.",
+    )
+    parser.add_argument(
+        "--viewer-follow-camera",
+        action="store_true",
+        default=False,
+        help="Continuously recenter the local viewer camera on the robot.",
+    )
+    parser.add_argument(
+        "--send-identity-root-rot",
+        action="store_true",
+        default=False,
+        help="Force the transmitted root_rot_xyzw to [0, 0, 0, 1].",
+    )
     return parser
 
 
@@ -252,6 +270,11 @@ def normalize_quat_wxyz(quat: np.ndarray) -> np.ndarray:
     return quat / norm
 
 
+def quat_inv_wxyz(quat: np.ndarray) -> np.ndarray:
+    quat = normalize_quat_wxyz(quat)
+    return np.array([quat[0], -quat[1], -quat[2], -quat[3]], dtype=np.float64)
+
+
 def transform_lumo_position(x: float, y: float, z: float) -> np.ndarray:
     return np.array([x, -z, y], dtype=np.float64) * 0.01
 
@@ -262,8 +285,76 @@ def transform_lumo_quat_to_xyzw(qw: float, qx: float, qy: float, qz: float) -> n
         dtype=np.float64,
     )
     quat_wxyz = normalize_quat_wxyz(np.array([qw, qx, qy, qz], dtype=np.float64))
-    transformed_wxyz = normalize_quat_wxyz(quat_mul_wxyz(lumo_to_gmr_wxyz, quat_wxyz))
+    transformed_wxyz = normalize_quat_wxyz(
+        quat_mul_wxyz(
+            quat_mul_wxyz(lumo_to_gmr_wxyz, quat_wxyz),
+            quat_inv_wxyz(lumo_to_gmr_wxyz),
+        )
+    )
     return transformed_wxyz[[1, 2, 3, 0]]
+
+
+def quat_xyzw_to_euler_xyz_deg(quat_xyzw: np.ndarray) -> np.ndarray:
+    x, y, z, w = quat_xyzw
+    norm = np.linalg.norm(quat_xyzw)
+    if norm < 1e-8:
+        return np.zeros(3, dtype=np.float64)
+    x, y, z, w = quat_xyzw / norm
+
+    roll = np.arctan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
+    pitch = np.arcsin(np.clip(2.0 * (w * y - z * x), -1.0, 1.0))
+    yaw = np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+    return np.degrees(np.array([roll, pitch, yaw], dtype=np.float64))
+
+
+def quat_xyzw_to_angle_deg(quat_xyzw: np.ndarray) -> float:
+    norm = np.linalg.norm(quat_xyzw)
+    if norm < 1e-8:
+        return 0.0
+    w = float(np.clip((quat_xyzw / norm)[3], -1.0, 1.0))
+    return float(np.degrees(2.0 * np.arccos(abs(w))))
+
+
+def normalize_quat_xyzw(quat_xyzw: np.ndarray) -> np.ndarray:
+    norm = np.linalg.norm(quat_xyzw)
+    if norm < 1e-8:
+        return np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
+    return quat_xyzw / norm
+
+
+def quat_mul_xyzw(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
+    x1, y1, z1, w1 = q1
+    x2, y2, z2, w2 = q2
+    return np.array(
+        [
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+        ],
+        dtype=np.float64,
+    )
+
+
+def quat_inv_xyzw(quat_xyzw: np.ndarray) -> np.ndarray:
+    quat_xyzw = normalize_quat_xyzw(quat_xyzw)
+    return np.array(
+        [-quat_xyzw[0], -quat_xyzw[1], -quat_xyzw[2], quat_xyzw[3]],
+        dtype=np.float64,
+    )
+
+
+def root_rot_relative_to_initial(
+    root_rot_xyzw: np.ndarray,
+    initial_root_rot_xyzw: np.ndarray,
+) -> np.ndarray:
+    root_rot_xyzw = normalize_quat_xyzw(root_rot_xyzw)
+    initial_root_rot_xyzw = normalize_quat_xyzw(initial_root_rot_xyzw)
+    if np.dot(root_rot_xyzw, initial_root_rot_xyzw) < 0.0:
+        root_rot_xyzw = -root_rot_xyzw
+    return normalize_quat_xyzw(
+        quat_mul_xyzw(quat_inv_xyzw(initial_root_rot_xyzw), root_rot_xyzw)
+    )
 
 
 def build_motion_array(
@@ -271,6 +362,7 @@ def build_motion_array(
     joint_order: List[str],
     alias_to_joint_name: Dict[str, str],
     joint_smoother: Optional[JointAngleSmoother] = None,
+    send_identity_root_rot: bool = False,
 ) -> tuple[np.ndarray, List[str], List[str]]:
     raw_motor_angles = {str(key): float(value) for key, value in skeleton.MotorAngle.items()}
     resolved_motor_angles: Dict[str, float] = {}
@@ -302,6 +394,8 @@ def build_motion_array(
         root_rot_xyzw = transform_lumo_quat_to_xyzw(
             root_bone.qw, root_bone.qx, root_bone.qy, root_bone.qz
         )
+    if send_identity_root_rot:
+        root_rot_xyzw = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
 
     payload = np.concatenate([root_pos, root_rot_xyzw, dof_pos]).astype(
         np.float32,
@@ -359,6 +453,8 @@ def main() -> int:
     last_wait_log = 0.0
     last_stats_log = time.time()
     summary_printed = False
+    initial_rotation_printed = False
+    initial_root_rot_xyzw: Optional[np.ndarray] = None
     if viewer is not None:
         identity_root_pos = viewer.data.qpos[:3].copy()
         identity_root_rot = viewer.data.qpos[3:7].copy()
@@ -372,6 +468,10 @@ def main() -> int:
         print(f"Loaded {len(joint_order)} joints from {robot_xml_path}")
         print("Array layout: root_pos(3) + root_rot_xyzw(4) + dof_pos(29)")
         print(f"Joint smoothing alpha: {args.joint_smoothing_alpha}")
+        if args.send_identity_root_rot:
+            print("Transmit root_rot_xyzw forced to [0, 0, 0, 1].")
+        else:
+            print("Transmit root_rot_xyzw relative to the first valid frame.")
         if viewer is not None:
             print("Local G1 visualization enabled.")
 
@@ -390,7 +490,7 @@ def main() -> int:
                         root_rot=identity_root_rot,
                         dof_pos=last_valid_dof_pos,
                         rate_limit=args.rate_limit,
-                        follow_camera=True,
+                        follow_camera=args.viewer_follow_camera,
                     )
                 if args.non_blocking:
                     time.sleep(max(args.poll_sleep, 0.0))
@@ -406,6 +506,7 @@ def main() -> int:
                 joint_order=joint_order,
                 alias_to_joint_name=alias_to_joint_name,
                 joint_smoother=joint_smoother,
+                send_identity_root_rot=args.send_identity_root_rot,
             )
 
             if args.print_joint_summary and not summary_printed:
@@ -424,19 +525,66 @@ def main() -> int:
                 print(f"Outgoing array length: {payload.shape[0]} float32 values")
                 summary_printed = True
 
-            payload64 = payload.astype(np.float64, copy=False)
+            payload64 = payload.astype(np.float64, copy=True)
+            raw_root_rot_xyzw = payload64[3:7].copy()
+            if not args.send_identity_root_rot:
+                if initial_root_rot_xyzw is None:
+                    initial_root_rot_xyzw = normalize_quat_xyzw(raw_root_rot_xyzw)
+                relative_root_rot_xyzw = root_rot_relative_to_initial(
+                    raw_root_rot_xyzw,
+                    initial_root_rot_xyzw,
+                )
+                payload[3:7] = relative_root_rot_xyzw.astype(np.float32)
+                payload64[3:7] = relative_root_rot_xyzw
+
             current_root_pos = payload64[:3]
             current_root_rot = payload64[3:7][[3, 0, 1, 2]]
             current_dof_pos = payload64[7:]
             last_valid_dof_pos = current_dof_pos
 
+            if not initial_rotation_printed:
+                transmitted_root_rot_xyzw = payload64[3:7]
+                raw_euler_xyz_deg = quat_xyzw_to_euler_xyz_deg(raw_root_rot_xyzw)
+                transmitted_euler_xyz_deg = quat_xyzw_to_euler_xyz_deg(
+                    transmitted_root_rot_xyzw
+                )
+                transmitted_angle_deg = quat_xyzw_to_angle_deg(transmitted_root_rot_xyzw)
+                print("Initial streamed root rotation (first valid frame):")
+                print(
+                    "  raw_root_rot_xyzw = "
+                    f"[{raw_root_rot_xyzw[0]:.6f}, {raw_root_rot_xyzw[1]:.6f}, "
+                    f"{raw_root_rot_xyzw[2]:.6f}, {raw_root_rot_xyzw[3]:.6f}]"
+                )
+                print(
+                    "  raw_euler_xyz_deg(roll, pitch, yaw) = "
+                    f"[{raw_euler_xyz_deg[0]:.3f}, {raw_euler_xyz_deg[1]:.3f}, "
+                    f"{raw_euler_xyz_deg[2]:.3f}]"
+                )
+                print(
+                    "  transmitted_root_rot_xyzw = "
+                    f"[{transmitted_root_rot_xyzw[0]:.6f}, "
+                    f"{transmitted_root_rot_xyzw[1]:.6f}, "
+                    f"{transmitted_root_rot_xyzw[2]:.6f}, "
+                    f"{transmitted_root_rot_xyzw[3]:.6f}]"
+                )
+                print(
+                    "  transmitted_euler_xyz_deg(roll, pitch, yaw) = "
+                    f"[{transmitted_euler_xyz_deg[0]:.3f}, "
+                    f"{transmitted_euler_xyz_deg[1]:.3f}, "
+                    f"{transmitted_euler_xyz_deg[2]:.3f}]"
+                )
+                print(f"  transmitted_rotation_angle_deg = {transmitted_angle_deg:.3f}")
+                initial_rotation_printed = True
+
             if viewer is not None:
+                viewer_root_pos = current_root_pos if args.viewer_use_stream_root else identity_root_pos
+                viewer_root_rot = current_root_rot if args.viewer_use_stream_root else identity_root_rot
                 viewer.step(
-                    root_pos=current_root_pos,
-                    root_rot=current_root_rot,
+                    root_pos=viewer_root_pos,
+                    root_rot=viewer_root_rot,
                     dof_pos=current_dof_pos,
                     rate_limit=args.rate_limit,
-                    follow_camera=True,
+                    follow_camera=args.viewer_follow_camera,
                 )
 
             try:
