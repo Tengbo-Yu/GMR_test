@@ -44,7 +44,7 @@ LUMO_REQUIRED_SOURCE_BONES: List[str] = [
     "RightHand",
 ]
 
-POSITION_SCALE_METERS = 0.01
+POSITION_SCALE_METERS = 0.001
 COORDINATE_ROTATION_MATRIX = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=np.float64)
 COORDINATE_ROTATION_QUAT_WXYZ = np.array(
     [

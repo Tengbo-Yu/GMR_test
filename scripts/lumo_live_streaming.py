@@ -417,6 +417,28 @@ def make_motion_frame_array(qpos: np.ndarray) -> np.ndarray:
     ).astype(np.float32, copy=False)
 
 
+def lift_robot_qpos_to_ground(retargeter, qpos: np.ndarray, clearance: float) -> np.ndarray:
+    if clearance < 0:
+        return qpos
+
+    qpos = qpos.copy()
+    data = retargeter.configuration.data
+    data.qpos[:] = qpos
+    import mujoco as mj
+
+    mj.mj_forward(retargeter.model, data)
+    if data.geom_xpos.shape[0] == 0:
+        return qpos
+
+    geom_vertical_radius = np.max(retargeter.model.geom_size, axis=1)
+    lowest_z = float(np.min(data.geom_xpos[:, 2] - geom_vertical_radius))
+    if lowest_z < clearance:
+        qpos[2] += clearance - lowest_z
+        data.qpos[:] = qpos
+        mj.mj_forward(retargeter.model, data)
+    return qpos
+
+
 def main() -> int:
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -515,6 +537,18 @@ def main() -> int:
         default=2.0,
         help="How often to print waiting status when no LuMo frame arrives.",
     )
+    parser.add_argument(
+        "--no_offset_to_ground",
+        action="store_true",
+        default=False,
+        help="Disable moving live human targets so the lowest foot is above the ground.",
+    )
+    parser.add_argument(
+        "--robot_ground_clearance",
+        type=float,
+        default=0.02,
+        help="Minimum robot geometry height above ground after retargeting. Use a negative value to disable.",
+    )
     args = parser.parse_args()
 
     if args.save_path is not None:
@@ -540,7 +574,7 @@ def main() -> int:
 
     rotation_matrix = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=np.float64)
     rotation_quat_wxyz = quat_xyzw_to_wxyz(R.from_matrix(rotation_matrix).as_quat())
-    position_scale = 0.01
+    position_scale = 0.001
 
     required_bones = [
         "Hips",
@@ -571,8 +605,8 @@ def main() -> int:
         tgt_robot=args.robot,
         actual_human_height=args.human_height,
         solver="daqp",
-        damping=1.0,
-        use_velocity_limit=True,
+        damping=0.5,
+        use_velocity_limit=False,
     )
 
     viewer = None
@@ -658,6 +692,17 @@ def main() -> int:
                 )
 
             bones_by_name = build_bone_map(skeleton)
+
+            print("-----------------------------")
+            print(bones_by_name.keys())
+            for bone_name, bone in bones_by_name.items():
+                print(
+                    f"{bone_name}: "
+                    f"pos=({bone.X:.6f}, {bone.Y:.6f}, {bone.Z:.6f}), "
+                    f"quat_wxyz=({bone.qw:.6f}, {bone.qx:.6f}, {bone.qy:.6f}, {bone.qz:.6f})"
+                )
+
+
             if args.print_joint_summary and not summary_printed:
                 maybe_print_joint_summary(bones_by_name, required_bones)
                 summary_printed = True
@@ -681,7 +726,15 @@ def main() -> int:
             recorder.add_frame(bones_by_name)
 
             try:
-                qpos = retargeter.retarget(human_frame, offset_to_ground=False)
+                qpos = retargeter.retarget(
+                    human_frame,
+                    offset_to_ground=not args.no_offset_to_ground,
+                )
+                qpos = lift_robot_qpos_to_ground(
+                    retargeter,
+                    qpos,
+                    clearance=args.robot_ground_clearance,
+                )
             except Exception as e:
                 dropped_frames += 1
                 print(f"Retargeting failed: {e}")

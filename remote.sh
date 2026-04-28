@@ -4,7 +4,8 @@ python scripts/receive_human_stream_retarget.py \
   --protocol udp \
   --robot unitree_g1 \
   --motion_fps 120 \
-  --rate_limit
+  --rate_limit \
+  --forward_udp_port 9000
 
 
 # python scripts/receive_human_stream_retarget.py \

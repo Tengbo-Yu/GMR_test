@@ -19,13 +19,20 @@
 
 
 python scripts/bvh_to_robot.py \
-  --bvh_file /mnt/c/Users/TsingSV/GMR/test_Skeleton2.bvh \
+  --bvh_file /mnt/c/Users/TsingSV/GMR/lumo_live.bvh \
   --format mocap \
   --robot unitree_g1 \
   --motion_fps 120 \
   --rate_limit \
   --save_path /mnt/c/Users/TsingSV/GMR/test_Skeleton2.pkl
   
+python scripts/bvh_to_robot.py \
+  --bvh_file /mnt/c/Users/TsingSV/GMR/misc/test_Skeleton0.bvh \
+  --format mocap \
+  --robot unitree_g1 \
+  --motion_fps 120 \
+  --rate_limit \
+  --save_path /mnt/c/Users/TsingSV/GMR/test_Skeleton2.pkl
   #  \
   # --record_video \
   # --video_path /mnt/c/Users/TsingSV/GMR/test_Skeleton0_g1.mp4

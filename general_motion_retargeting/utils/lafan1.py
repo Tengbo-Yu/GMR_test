@@ -51,7 +51,8 @@ def load_bvh_file(bvh_file, format="lafan1"):
             orientation = utils.quat_mul(rotation_quat, global_data[0][frame, i])
             position = global_data[1][frame, i] @ rotation_matrix.T / 100  # cm to m
             result[bone] = [position, orientation]
-            
+            print("---------")
+            print(bone)
         # Add modified foot pose. Different BVH exports may use different toe names.
         result["LeftFootMod"] = [result["LeftFoot"][0], result[format_config["left_foot_bone"]][1]]
         result["RightFootMod"] = [result["RightFoot"][0], result[format_config["right_foot_bone"]][1]]
